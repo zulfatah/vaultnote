@@ -11,6 +11,8 @@ function fail(res, code, error) {
 }
 
 async function register(req, res) {
+  return fail(res, 410, 'Local register disabled. Use Firebase email/password flow.');
+  /*
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -51,9 +53,12 @@ async function register(req, res) {
   } catch (_error) {
     return fail(res, 500, 'Failed to register user.');
   }
+  */
 }
 
 async function verifyEmail(req, res) {
+  return fail(res, 410, 'Local verify-email disabled. Use Firebase email verification.');
+  /*
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -80,9 +85,12 @@ async function verifyEmail(req, res) {
   } catch (_error) {
     return fail(res, 500, 'Failed to verify email.');
   }
+  */
 }
 
 async function resendVerification(req, res) {
+  return fail(res, 410, 'Local resend verification disabled. Use Firebase verification email.');
+  /*
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -126,9 +134,12 @@ async function resendVerification(req, res) {
   } catch (_error) {
     return fail(res, 500, 'Failed to resend verification email.');
   }
+  */
 }
 
 async function devManualVerificationLink(req, res) {
+  return fail(res, 410, 'Local manual verification disabled. Use Firebase email verification.');
+  /*
   try {
     if (process.env.NODE_ENV === 'production') {
       return fail(res, 403, 'Manual verification endpoint disabled in production.');
@@ -171,9 +182,12 @@ async function devManualVerificationLink(req, res) {
   } catch (_error) {
     return fail(res, 500, 'Failed to generate manual verification link.');
   }
+  */
 }
 
 function login(req, res, next) {
+  return fail(res, 410, 'Local login disabled. Use Firebase email/password flow.');
+  /*
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return fail(res, 400, errors.array()[0].msg);
@@ -194,6 +208,64 @@ function login(req, res, next) {
       return res.json({ success: true, data: { id: user.id, email: user.email } });
     });
   })(req, res, next);
+  */
+}
+
+async function firebaseEmailLogin(req, res) {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return fail(res, 400, errors.array()[0].msg);
+    }
+
+    const { idToken } = req.body;
+    const firebaseAdmin = initFirebaseAdmin();
+    const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+
+    const email = (decoded.email || '').toLowerCase().trim();
+    const firebaseUid = decoded.uid;
+    const emailVerified = Boolean(decoded.email_verified);
+
+    if (!email || !firebaseUid) {
+      return fail(res, 401, 'Invalid Firebase token payload.');
+    }
+    if (!emailVerified) {
+      return fail(res, 403, 'Please verify your email before logging in.');
+    }
+
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [{ googleId: firebaseUid }, { email }],
+      },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          googleId: firebaseUid,
+          isVerified: true,
+        },
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: user.googleId || firebaseUid,
+          isVerified: true,
+        },
+      });
+    }
+
+    req.logIn(user, (loginErr) => {
+      if (loginErr) {
+        return fail(res, 500, 'Login session failed.');
+      }
+      return res.json({ success: true, data: { id: user.id, email: user.email } });
+    });
+  } catch (_error) {
+    return fail(res, 401, 'Firebase authentication failed.');
+  }
 }
 
 async function firebaseGoogleLogin(req, res) {
@@ -263,4 +335,4 @@ function me(req, res) {
   return res.json({ success: true, data: { id: req.user.id, email: req.user.email } });
 }
 
-module.exports = { register, verifyEmail, resendVerification, devManualVerificationLink, login, firebaseGoogleLogin, logout, me };
+module.exports = { register, verifyEmail, resendVerification, devManualVerificationLink, login, firebaseEmailLogin, firebaseGoogleLogin, logout, me };

@@ -23,6 +23,7 @@ router.post(
   authController.login
 );
 
+router.post('/firebase/email', authLimiter, [body('idToken').isString().isLength({ min: 100, max: 5000 })], authController.firebaseEmailLogin);
 router.post('/google/firebase', authLimiter, [body('idToken').isString().isLength({ min: 100, max: 5000 })], authController.firebaseGoogleLogin);
 
 router.post('/logout', authController.logout);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api';
-import { signInWithGooglePopup } from '../firebase';
+import { loginWithEmailPassword, registerWithEmailPassword, resendFirebaseVerification, signInWithGooglePopup } from '../firebase';
 import { Spinner } from '../components/Spinner';
 
 export default function AuthPage() {
@@ -30,16 +30,17 @@ export default function AuthPage() {
     setFeedback(null);
 
     try {
-      const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
-      await apiRequest(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-
       if (mode === 'register') {
-        setFeedback({ type: 'ok', text: 'Registered. Check email for verification link.' });
+        await registerWithEmailPassword(email.trim(), password);
+        setFeedback({ type: 'ok', text: 'Registered in Firebase. Check your email verification link.' });
         setPassword('');
       } else {
+        const user = await loginWithEmailPassword(email.trim(), password);
+        const idToken = await user.getIdToken();
+        await apiRequest('/auth/firebase/email', {
+          method: 'POST',
+          body: JSON.stringify({ idToken }),
+        });
         navigate('/dashboard', { replace: true });
       }
     } catch (error) {
@@ -76,19 +77,17 @@ export default function AuthPage() {
   }
 
   async function onResendVerification() {
-    if (!email.trim()) {
-      setFeedback({ type: 'error', text: 'Isi email dulu untuk kirim ulang verifikasi.' });
+    if (!email.trim() || !password) {
+      setFeedback({ type: 'error', text: 'Isi email dan password dulu untuk resend verifikasi Firebase.' });
       return;
     }
 
     setResendLoading(true);
     setFeedback(null);
     try {
-      const data = await apiRequest('/auth/resend-verification', {
-        method: 'POST',
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      setFeedback({ type: 'ok', text: data.message || 'Verification email resent.' });
+      await loginWithEmailPassword(email.trim(), password);
+      await resendFirebaseVerification();
+      setFeedback({ type: 'ok', text: 'Firebase verification email resent.' });
     } catch (error) {
       setFeedback({ type: 'error', text: error.message });
     } finally {
@@ -116,7 +115,7 @@ export default function AuthPage() {
             <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? <Spinner /> : mode === 'login' ? 'LOGIN' : 'REGISTER'}</button>
             {mode === 'login' && (
               <button className="btn" type="button" onClick={onResendVerification} disabled={resendLoading}>
-                {resendLoading ? <Spinner /> : 'RESEND VERIFICATION'}
+                {resendLoading ? <Spinner /> : 'RESEND FIREBASE VERIFICATION'}
               </button>
             )}
           </form>
