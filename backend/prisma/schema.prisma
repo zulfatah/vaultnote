@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(uuid()) @db.VarChar(36)
+  email             String    @unique @db.VarChar(255)
+  passwordHash      String?   @db.VarChar(255)
+  isVerified        Boolean   @default(false)
+  verifyToken       String?   @db.VarChar(128)
+  verifyTokenExpiry DateTime?
+  googleId          String?   @unique @db.VarChar(128)
+  createdAt         DateTime  @default(now())
+  notes             Note[]
+}
+
+model Note {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  userId        String   @db.VarChar(36)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedText String   @db.Text
+  iv            String   @db.VarChar(64)
+  authTag       String   @db.VarChar(64)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
